@@ -1,8 +1,8 @@
 package main
 
 import (
-	"log"
-	"github.com/xanzy/go-gitlab"
+  "log"
+  "github.com/xanzy/go-gitlab"
   "github.com/go-ldap/ldap"
   "sync"
   "encoding/json"
@@ -17,58 +17,58 @@ type Group_Sync struct {
 }
 
 func difference(a, b []string) []string {
-    mb := make(map[string]struct{}, len(b))
-    for _, x := range b {
-        mb[x] = struct{}{}
+  mb := make(map[string]struct{}, len(b))
+  for _, x := range b {
+    mb[x] = struct{}{}
+  }
+  var diff []string
+  for _, x := range a {
+    if _, found := mb[x]; !found {
+      diff = append(diff, x)
     }
-    var diff []string
-    for _, x := range a {
-        if _, found := mb[x]; !found {
-            diff = append(diff, x)
-        }
-    }
-    return diff
+  }
+  return diff
 }
 
 func Connect() (*ldap.Conn) {
-    l, err := ldap.DialURL(fmt.Sprintf("ldap://%s:389", os.Getenv("GITLAB_LDAP_GROUP_MAPPER_LDAP_FQDN")))
-    if err != nil {
-        log.Fatal(err)
-    }
-    l.Bind(os.Getenv("GITLAB_LDAP_GROUP_MAPPER_LDAP_BINDUSERNAME"), os.Getenv("GITLAB_LDAP_GROUP_MAPPER_LDAP_BINDPASSWORD"))
+  l, err := ldap.DialURL(fmt.Sprintf("ldap://%s:389", os.Getenv("GITLAB_LDAP_GROUP_MAPPER_LDAP_FQDN")))
+  if err != nil {
+    log.Fatal(err)
+  }
+  l.Bind(os.Getenv("GITLAB_LDAP_GROUP_MAPPER_LDAP_BINDUSERNAME"), os.Getenv("GITLAB_LDAP_GROUP_MAPPER_LDAP_BINDPASSWORD"))
 
-    return l
+  return l
 }
 
 func GitlabConnect() (*gitlab.Client) {
-	git, err := gitlab.NewClient(os.Getenv("GITLAB_LDAP_GROUP_MAPPER_GITLAB_TOKEN"), gitlab.WithBaseURL(os.Getenv("GITLAB_LDAP_GROUP_MAPPER_GITLAB_DOMAIN")))
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
+  git, err := gitlab.NewClient(os.Getenv("GITLAB_LDAP_GROUP_MAPPER_GITLAB_TOKEN"), gitlab.WithBaseURL(os.Getenv("GITLAB_LDAP_GROUP_MAPPER_GITLAB_DOMAIN")))
+  if err != nil {
+    log.Fatalf("Failed to create client: %v", err)
+  }
   return git
 }
 
 func main() {
-	git :=  GitlabConnect() // Gitlab context
+  git :=  GitlabConnect() // Gitlab context
   l := Connect() // LDAP context
 
   group_options := &gitlab.ListGroupsOptions{
     AllAvailable:         gitlab.Bool(true),
-	}
+  }
 
-	groups, _, err := git.Groups.ListGroups(group_options)
-	
+  groups, _, err := git.Groups.ListGroups(group_options)
+
   if err != nil {
-		log.Fatal(err)
-	}
+    log.Fatal(err)
+  }
 
   // List Top level Gitlab groups
   for _, e := range groups {
-	  sggroups, _, err := git.Groups.ListDescendantGroups(e.ID, nil)
+    sggroups, _, err := git.Groups.ListDescendantGroups(e.ID, nil)
 
-	  if err != nil {
-		  log.Fatal(err)
-	  }
+    if err != nil {
+      log.Fatal(err)
+    }
 
     var wg sync.WaitGroup
 
@@ -79,19 +79,19 @@ func main() {
       go func(se *gitlab.Group) {
         defer wg.Done()
 
-    	  settings, _, err := git.GroupVariables.GetVariable(se.ID, "LDAP_GITLAB_SYNC_SETTINGS")
+        settings, _, err := git.GroupVariables.GetVariable(se.ID, "LDAP_GITLAB_SYNC_SETTINGS")
 
 
         // Check if the group should be synchronized
-    	  if err == nil {
+        if err == nil {
           var groups_syncs []Group_Sync
           json.Unmarshal([]byte(settings.Value), &groups_syncs)
           log.Print("Synchronize: ", se.FullPath)
 
           gcrpmembers := &gitlab.ListGroupMembersOptions {}
-    	    members, _, err := git.Groups.ListGroupMembers(se.ID, gcrpmembers)
-    	    if err != nil{
-              log.Fatal(err)
+          members, _, err := git.Groups.ListGroupMembers(se.ID, gcrpmembers)
+          if err != nil{
+            log.Fatal(err)
           }
 
           var gitlab_users []string
@@ -101,7 +101,7 @@ func main() {
           }
 
           var users []string
-    
+
           // Get users from groups
           for _, ldap_group := range groups_syncs {
             searchRequest := ldap.NewSearchRequest(
@@ -125,19 +125,17 @@ func main() {
             for _, u := range sr.Entries {
               user := u.GetAttributeValue("sAMAccountName")
               users = append(users, user)
-    
-              
-    	        options := gitlab.ListUsersOptions{
-    		        Username: &user,
-    	        }
-    
-    	        usrs, _, err := git.Users.ListUsers(&options)
+
+              options := gitlab.ListUsersOptions{
+                Username: &user,
+              }
+
+              usrs, _, err := git.Users.ListUsers(&options)
               if err != nil {
                 panic(err)
               }
-    
+
               if len(usrs) != 0 {
-    
                 al := gitlab.AccessLevelValue(ldap_group.AccessLevel)
                 memberoption := &gitlab.AddGroupMemberOptions{
                   UserID:         gitlab.Int(usrs[0].ID),
@@ -155,22 +153,22 @@ func main() {
           // Cleanup users
           for _, u := range users_to_remove {
             log.Print(u)
-  	        options := gitlab.ListUsersOptions{
-  		        Username: &u,
-  	        }
-  
-  	        usrs, _, err := git.Users.ListUsers(&options)
+            options := gitlab.ListUsersOptions{
+              Username: &u,
+            }
+
+            usrs, _, err := git.Users.ListUsers(&options)
             if err != nil {
               panic(err)
             }
-  
+
             if len(usrs) != 0 {
               git.GroupMembers.RemoveGroupMember(se.ID, usrs[0].ID)
             }
           }
         }
       }(se)
-	  }
+    }
     wg.Wait()
   }
 }
