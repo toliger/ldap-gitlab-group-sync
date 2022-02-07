@@ -16,6 +16,20 @@ type Group_Sync struct {
   AccessLevel int
 }
 
+func difference(a, b []string) []string {
+    mb := make(map[string]struct{}, len(b))
+    for _, x := range b {
+        mb[x] = struct{}{}
+    }
+    var diff []string
+    for _, x := range a {
+        if _, found := mb[x]; !found {
+            diff = append(diff, x)
+        }
+    }
+    return diff
+}
+
 func Connect() (*ldap.Conn) {
     l, err := ldap.DialURL(fmt.Sprintf("ldap://%s:389", os.Getenv("GITLAB_LDAP_GROUP_MAPPER_LDAP_FQDN")))
     if err != nil {
@@ -72,10 +86,24 @@ func main() {
     	  if err == nil {
           var groups_syncs []Group_Sync
           json.Unmarshal([]byte(settings.Value), &groups_syncs)
+          log.Print("Synchronize: ", se.FullPath)
+
+          gcrpmembers := &gitlab.ListGroupMembersOptions {}
+    	    members, _, err := git.Groups.ListGroupMembers(se.ID, gcrpmembers)
+    	    if err != nil{
+              log.Fatal(err)
+          }
+
+          var gitlab_users []string
+
+          for _, u := range members {
+            gitlab_users = append(gitlab_users, u.Username)
+          }
+
+          var users []string
     
           // Get users from groups
           for _, ldap_group := range groups_syncs {
-            log.Print(ldap_group.LDAPGroupName, ldap_group.AccessLevel)
             searchRequest := ldap.NewSearchRequest(
               os.Getenv("GITLAB_LDAP_GROUP_MAPPER_LDAP_BASEDN"),
               ldap.ScopeWholeSubtree,
@@ -92,10 +120,11 @@ func main() {
               log.Fatal(err)
             }
 
+
             // Add Users to the group members
             for _, u := range sr.Entries {
               user := u.GetAttributeValue("sAMAccountName")
-              log.Print(user)
+              users = append(users, user)
     
               
     	        options := gitlab.ListUsersOptions{
@@ -116,6 +145,27 @@ func main() {
                 }
                 git.GroupMembers.AddGroupMember(se.ID, memberoption)
               }
+            }
+          }
+          log.Print("Gitlab group users: " , gitlab_users)
+          log.Print("LDAP group users: " , users)
+          users_to_remove := difference(gitlab_users, users)
+          log.Print("Users to remove from group: ", users_to_remove)
+
+          // Cleanup users
+          for _, u := range users_to_remove {
+            log.Print(u)
+  	        options := gitlab.ListUsersOptions{
+  		        Username: &u,
+  	        }
+  
+  	        usrs, _, err := git.Users.ListUsers(&options)
+            if err != nil {
+              panic(err)
+            }
+  
+            if len(usrs) != 0 {
+              git.GroupMembers.RemoveGroupMember(se.ID, usrs[0].ID)
             }
           }
         }
