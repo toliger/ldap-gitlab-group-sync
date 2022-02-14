@@ -1,0 +1,43 @@
+# Default values for gitlab-ldap-group-mapper.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/toliger/ldap-gitlab-group-sync
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+resources: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+lggs:
+  syncInterval: "30s"
+  ldap:
+    bindUsername: ""
+    fqdn: ""
+    baseDN: ""
+    filter: ""
+  gitlab:
+    domain: ""

@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gitlab-ldap-group-mapper.fullname" . }}
+  labels:
+    {{- include "gitlab-ldap-group-mapper.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "gitlab-ldap-group-mapper.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "gitlab-ldap-group-mapper.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "gitlab-ldap-group-mapper.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          env:
+          - name: GITLAB_LDAP_GROUP_MAPPER_INTERVAL
+            value: "{{ .Values.lggs.syncInterval }}"
+          - name: GITLAB_LDAP_GROUP_MAPPER_LDAP_BINDPASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: lggs-ldap
+                key: bindPassword
+          - name: GITLAB_LDAP_GROUP_MAPPER_LDAP_BINDUSERNAME
+            value: "{{ .Values.lggs.ldap.bindUsername }}"
+          - name: GITLAB_LDAP_GROUP_MAPPER_LDAP_FQDN
+            value: "{{ .Values.lggs.ldap.fqdn }}"
+          - name: GITLAB_LDAP_GROUP_MAPPER_LDAP_BASEDN
+            value: "{{ .Values.lggs.ldap.baseDN }}"
+          - name: GITLAB_LDAP_GROUP_MAPPER_LDAP_FILTER
+            value: "{{ .Values.lggs.ldap.filter }}"
+          - name: GITLAB_LDAP_GROUP_MAPPER_GITLAB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: lggs-gitlab
+                key: token
+          - name: GITLAB_LDAP_GROUP_MAPPER_GITLAB_DOMAIN
+            value: "{{ .Values.lggs.gitlab.domain }}"
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
